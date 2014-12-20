@@ -18,11 +18,27 @@
 
 #include <err.h>
 #include <errno.h>
+#include <inttypes.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+
+enum type {UNKNOWN = 0, CHAR, SHORT, INT, LONG};	/* type of value */
+
+struct magic {
+	bool cont;	/* continue line */
+	off_t offset;	/* file offset */
+	enum type type;	/* type of value */
+	union {
+		char c;
+		short s;
+		int i;
+		long l;
+	} value;	/* magic value */
+	char *msg;	/* message */
+};
 
 void
 print_msg(char *path, char *type, char *link)
@@ -76,6 +92,65 @@ file_stdout(char *path)
 	}
 }
 
+char *
+magic_type_str(enum type type)
+{
+	switch (type) {
+	case UNKNOWN: return "unkown";
+	case CHAR: return "char";
+	case SHORT: return "short";
+	case INT: return "int";
+	case LONG: return "long";
+	}
+
+	return "unknown";
+}
+
+void
+print_magic(struct magic *magic)
+{
+	printf("%s%" PRIu64 "\t%s\n",
+	    magic->cont ? ">" : "",
+	    magic->offset,
+	    magic_type_str(magic->type));
+}
+
+void
+read_magic(char *path)
+{
+	struct magic magic;
+	FILE *fh = NULL;
+	char buf[BUFSIZ];
+
+	if ((fh = fopen(path, "r")) == NULL)
+		err(EXIT_FAILURE, "fopen");
+
+	for (size_t line = 0; fgets(buf, sizeof buf, fh) != NULL; line++) {
+		if (buf[0] == '\n' || buf[0] == '#')
+			continue;
+
+		memset(&magic, 0, sizeof magic);
+
+		char *str = &buf[0];
+		if (buf[0] == '>') {
+			magic.cont = true;
+			str = &buf[1];
+		}
+
+		errno = 0;
+		magic.offset = strtol(str, &str, 0);
+		if (errno != 0) {
+			fprintf(stderr, "line %zu: %s", line, strerror(errno));
+			continue;
+		}
+
+		print_magic(&magic);
+	}
+
+	if (fclose(fh) == EOF)
+		err(EXIT_FAILURE, "fclose");
+}
+
 void
 usage(void)
 {
@@ -127,6 +202,9 @@ main(int argc, char *argv[])
 
 	if (argc == 0)
 		usage();
+
+	if (dflag)
+		read_magic(magic_path);
 
 	for (int i = 0; i < argc; i++)
 		file_stdout(argv[i]);
