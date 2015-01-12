@@ -25,7 +25,11 @@
 #include <string.h>
 #include <unistd.h>
 
+#define jump_to_nonspace(str) \
+	for (; (str)[0] == ' ' || (str)[0] == '\t'; (str)++)
+
 enum type {UNKNOWN = 0, CHAR, SHORT, INT, LONG};	/* type of value */
+
 
 struct magic {
 	bool cont;	/* continue line */
@@ -95,15 +99,23 @@ file_stdout(char *path)
 char *
 magic_type_str(enum type type)
 {
-	switch (type) {
-	case UNKNOWN: return "unkown";
-	case CHAR: return "char";
-	case SHORT: return "short";
-	case INT: return "int";
-	case LONG: return "long";
-	}
-
+	if (type == UNKNOWN) return "unkown";
+	if (type == CHAR) return "char";
+	if (type == SHORT) return "short";
+	if (type == INT) return "int";
+	if (type == LONG) return "long";
 	return "unknown";
+}
+
+enum type
+get_magic_type(char *str)
+{
+	if (strncmp(str, "char", 4) == 0) return CHAR;
+	if (strncmp(str, "short", 5) == 0) return SHORT;
+	if (strncmp(str, "int", 3) == 0) return INT;
+	if (strncmp(str, "long", 4) == 0) return LONG;
+
+	return UNKNOWN;
 }
 
 void
@@ -131,18 +143,28 @@ read_magic(char *path)
 
 		memset(&magic, 0, sizeof magic);
 
+		/* parse continue character */
 		char *str = &buf[0];
 		if (buf[0] == '>') {
 			magic.cont = true;
 			str = &buf[1];
 		}
 
+		/* parse offset */
 		errno = 0;
 		magic.offset = strtol(str, &str, 0);
 		if (errno != 0) {
 			fprintf(stderr, "line %zu: %s", line, strerror(errno));
 			continue;
 		}
+
+		/* parse offset */
+		//printf("str: %s\n", str);
+		/* looking for first non-space char */
+		jump_to_nonspace(str);
+		//printf("str: %s\n", str);
+		if ((magic.type = get_magic_type(str)) == UNKNOWN)
+			continue;
 
 		print_magic(&magic);
 	}
